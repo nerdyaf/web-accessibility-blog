@@ -842,4 +842,563 @@ class CommentSystem {
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{ data.title }}">
 <meta name="twitter:description" content="{{ data.description }}">
-<meta name="twitter:image" content="{{
+<meta name="twitter:image" content="{{ data.image }}">
+
+<!-- Schema.org -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "{{ data.title }}",
+    "image": "{{ data.image }}",
+    "author": {
+        "@type": "Person",
+        "name": "{{ site.author.name }}"
+    },
+    "datePublished": "{{ data.date | dateToISO }}",
+    "description": "{{ data.description }}"
+}
+</script>
+{% endmacro %}
+```
+
+#### 10.2 Sitemap Generation
+```javascript
+// .eleventy.js
+const sitemap = require("@quasibit/eleventy-plugin-sitemap");
+
+module.exports = function(eleventyConfig) {
+    eleventyConfig.addPlugin(sitemap, {
+        sitemap: {
+            hostname: "https://yourblog.com",
+        },
+    });
+};
+```
+
+#### 10.3 RSS Feed
+```javascript
+// .eleventy.js
+const pluginRss = require("@11ty/eleventy-plugin-rss");
+
+module.exports = function(eleventyConfig) {
+    eleventyConfig.addPlugin(pluginRss);
+};
+```
+
+```html
+<!-- src/feed.njk -->
+---
+permalink: feed.xml
+eleventyExcludeFromCollections: true
+---
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>{{ site.title }}</title>
+    <subtitle>{{ site.description }}</subtitle>
+    <link href="{{ site.url }}/feed.xml" rel="self"/>
+    <link href="{{ site.url }}"/>
+    <updated>{{ collections.posts | getNewestCollectionItemDate | dateToRfc3339 }}</updated>
+    <id>{{ site.url }}</id>
+    <author>
+        <name>{{ site.author.name }}</name>
+        <email>{{ site.author.email }}</email>
+    </author>
+    {%- for post in collections.posts | reverse %}
+    {% set absolutePostUrl %}{{ site.url }}{{ post.url }}{% endset %}
+    <entry>
+        <title>{{ post.data.title }}</title>
+        <link href="{{ absolutePostUrl }}"/>
+        <updated>{{ post.date | dateToRfc3339 }}</updated>
+        <id>{{ absolutePostUrl }}</id>
+        <content type="html">{{ post.templateContent | htmlToAbsoluteUrls(absolutePostUrl) }}</content>
+    </entry>
+    {%- endfor %}
+</feed>
+```
+
+### Chapter 11: Analytics and Monitoring
+
+#### 11.1 Privacy-Focused Analytics
+```javascript
+// src/js/analytics.js
+class Analytics {
+    constructor() {
+        this.consent = this.checkConsent();
+        this.init();
+    }
+
+    checkConsent() {
+        return localStorage.getItem('analytics-consent') === 'true';
+    }
+
+    init() {
+        if (this.consent) {
+            this.setupEventListeners();
+        } else {
+            this.showConsentBanner();
+        }
+    }
+
+    async trackPageView() {
+        if (!this.consent) return;
+
+        try {
+            await fetch('/api/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    type: 'pageview',
+                    url: window.location.pathname,
+                    referrer: document.referrer,
+                    timestamp: new Date().toISOString()
+                })
+            });
+        } catch (error) {
+            console.error('Analytics error:', error);
+        }
+    }
+
+    showConsentBanner() {
+        const banner = document.createElement('div');
+        banner.innerHTML = `
+            <div class="consent-banner" role="alert">
+                <p>We use anonymous analytics to improve our site. Is this okay?</p>
+                <button onclick="analytics.acceptConsent()">Accept</button>
+                <button onclick="analytics.declineConsent()">Decline</button>
+            </div>
+        `;
+        document.body.appendChild(banner);
+    }
+
+    acceptConsent() {
+        localStorage.setItem('analytics-consent', 'true');
+        this.consent = true;
+        this.init();
+        document.querySelector('.consent-banner').remove();
+    }
+
+    declineConsent() {
+        localStorage.setItem('analytics-consent', 'false');
+        this.consent = false;
+        document.querySelector('.consent-banner').remove();
+    }
+}
+
+const analytics = new Analytics();
+```
+
+[C## Part 4: Testing, CI/CD, Documentation, and Maintenance
+
+### Chapter 12: Testing Strategies
+
+#### 12.1 Automated Accessibility Testing
+```javascript
+// tests/accessibility.test.js
+const axe = require('axe-core');
+const puppeteer = require('puppeteer');
+const { expect } = require('chai');
+
+describe('Accessibility Tests', () => {
+    let browser;
+    let page;
+
+    before(async () => {
+        browser = await puppeteer.launch();
+        page = await browser.newPage();
+    });
+
+    after(async () => {
+        await browser.close();
+    });
+
+    async function testPageAccessibility(url) {
+        await page.goto(`http://localhost:8080${url}`);
+        const results = await page.evaluate(() => {
+            return new Promise(resolve => {
+                axe.run((err, results) => {
+                    if (err) throw err;
+                    resolve(results);
+                });
+            });
+        });
+
+        return results;
+    }
+
+    const pagesToTest = ['/', '/blog', '/about'];
+
+    pagesToTest.forEach(url => {
+        it(`should have no accessibility violations on ${url}`, async () => {
+            const results = await testPageAccessibility(url);
+            expect(results.violations).to.be.empty;
+        });
+    });
+});
+```
+
+#### 12.2 Performance Testing
+```javascript
+// tests/performance.test.js
+const lighthouse = require('lighthouse');
+const chromeLauncher = require('chrome-launcher');
+
+async function runLighthouse(url) {
+    const chrome = await chromeLauncher.launch({
+        chromeFlags: ['--headless']
+    });
+
+    const options = {
+        logLevel: 'info',
+        output: 'json',
+        port: chrome.port,
+        onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
+    };
+
+    const results = await lighthouse(url, options);
+    await chrome.kill();
+
+    return results.lhr;
+}
+
+describe('Performance Tests', () => {
+    const thresholds = {
+        performance: 90,
+        accessibility: 95,
+        'best-practices': 90,
+        seo: 90
+    };
+
+    it('should meet performance thresholds', async () => {
+        const results = await runLighthouse('http://localhost:8080');
+        
+        Object.keys(thresholds).forEach(metric => {
+            const score = results.categories[metric].score * 100;
+            expect(score).to.be.at.least(thresholds[metric],
+                `${metric} score ${score} is below threshold ${thresholds[metric]}`);
+        });
+    });
+});
+```
+
+#### 12.3 Unit Testing Components
+```javascript
+// tests/components/search.test.js
+const { expect } = require('chai');
+const sinon = require('sinon');
+const { JSDOM } = require('jsdom');
+const BlogSearch = require('../../src/js/search');
+
+describe('BlogSearch Component', () => {
+    let dom;
+    let search;
+    let clock;
+
+    beforeEach(() => {
+        dom = new JSDOM(`
+            <input id="search-input" type="search">
+            <div id="search-results"></div>
+        `);
+        
+        global.window = dom.window;
+        global.document = dom.window.document;
+        
+        search = new BlogSearch();
+        clock = sinon.useFakeTimers();
+    });
+
+    afterEach(() => {
+        clock.restore();
+    });
+
+    it('should debounce search input', async () => {
+        const searchSpy = sinon.spy(search, 'handleSearch');
+        
+        const input = document.getElementById('search-input');
+        input.value = 'test';
+        input.dispatchEvent(new Event('input'));
+        
+        expect(searchSpy.called).to.be.false;
+        
+        clock.tick(300);
+        expect(searchSpy.calledOnce).to.be.true;
+    });
+
+    it('should display search results', async () => {
+        search.searchIndex = [
+            { title: 'Test Post', url: '/test', excerpt: 'Test content' }
+        ];
+
+        const input = document.getElementById('search-input');
+        input.value = 'test';
+        await search.handleSearch({ target: input });
+
+        const results = document.getElementById('search-results');
+        expect(results.innerHTML).to.include('Test Post');
+    });
+});
+```
+
+### Chapter 13: Continuous Integration/Deployment
+
+#### 13.1 GitHub Actions Workflow
+```yaml
+# .github/workflows/ci.yml
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests
+      run: npm test
+
+    - name: Run accessibility tests
+      run: npm run test:a11y
+
+    - name: Build
+      run: npm run build
+
+    - name: Deploy to Netlify
+      if: github.ref == 'refs/heads/main'
+      uses: netlify/actions/cli@master
+      with:
+        args: deploy --prod
+      env:
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+```
+
+#### 13.2 Quality Checks
+```javascript
+// .eslintrc.js
+module.exports = {
+    "env": {
+        "browser": true,
+        "es2021": true,
+        "node": true
+    },
+    "extends": [
+        "eslint:recommended",
+        "plugin:a11y/recommended"
+    ],
+    "parserOptions": {
+        "ecmaVersion": 12,
+        "sourceType": "module"
+    },
+    "plugins": [
+        "a11y"
+    ],
+    "rules": {
+        "a11y/aria-props": "error",
+        "a11y/aria-proptypes": "error",
+        "a11y/aria-unsupported-elements": "error",
+        "a11y/role-has-required-aria-props": "error"
+    }
+};
+```
+
+### Chapter 14: Documentation
+
+#### 14.1 Technical Documentation
+```markdown
+<!-- docs/technical/architecture.md -->
+# Technical Architecture
+
+## Overview
+This blog is built using the following technologies:
+- 11ty for static site generation
+- Nunjucks for templating
+- Custom JavaScript for interactivity
+- CSS with BEM methodology
+
+## Directory Structure
+```plaintext
+.
+├── src/                  # Source files
+│   ├── _includes/       # Reusable components
+│   ├── _layouts/        # Page layouts
+│   ├── posts/           # Blog posts
+│   ├── assets/          # Static assets
+│   ├── css/            # Stylesheets
+│   └── js/             # JavaScript files
+├── tests/               # Test files
+├── docs/                # Documentation
+└── dist/                # Built files
+```
+
+## Build Process
+1. Content processing (Markdown → HTML)
+2. Template rendering
+3. Asset optimization
+4. CSS/JS minification
+```
+
+#### 14.2 Content Management Guide
+```markdown
+<!-- docs/content/writing-guide.md -->
+# Content Writing Guide
+
+## Post Structure
+Each blog post should include:
+
+1. Front Matter
+```yaml
+---
+title: Your Post Title
+description: Brief description for SEO
+date: 2024-03-20
+tags: 
+  - category1
+  - category2
+image: /assets/images/post-image.jpg
+---
+```
+
+2. Content Guidelines
+- Use proper heading hierarchy (h1 → h2 → h3)
+- Include alt text for images
+- Keep paragraphs concise
+- Use code blocks with language specification
+
+3. Accessibility Considerations
+- Avoid directional instructions
+- Provide text alternatives for media
+- Use descriptive link text
+```
+
+### Chapter 15: Maintenance and Updates
+
+#### 15.1 Update Script
+```javascript
+// scripts/update-dependencies.js
+const { exec } = require('child_process');
+const semver = require('semver');
+const fs = require('fs').promises;
+
+async function updateDependencies() {
+    try {
+        // Get outdated packages
+        const outdated = await new Promise((resolve, reject) => {
+            exec('npm outdated --json', (error, stdout) => {
+                if (error && error.code !== 1) reject(error);
+                resolve(JSON.parse(stdout || '{}'));
+            });
+        });
+
+        // Read package.json
+        const pkg = JSON.parse(
+            await fs.readFile('package.json', 'utf8')
+        );
+
+        // Update dependencies
+        for (const [name, info] of Object.entries(outdated)) {
+            if (semver.major(info.current) !== semver.major(info.latest)) {
+                console.log(`Major update available for ${name}`);
+                continue;
+            }
+
+            if (pkg.dependencies?.[name]) {
+                pkg.dependencies[name] = `^${info.latest}`;
+            }
+            if (pkg.devDependencies?.[name]) {
+                pkg.devDependencies[name] = `^${info.latest}`;
+            }
+        }
+
+        // Write updated package.json
+        await fs.writeFile(
+            'package.json',
+            JSON.stringify(pkg, null, 2)
+        );
+
+        // Install updates
+        await new Promise((resolve, reject) => {
+            exec('npm install', (error) => {
+                if (error) reject(error);
+                resolve();
+            });
+        });
+
+        console.log('Dependencies updated successfully');
+    } catch (error) {
+        console.error('Error updating dependencies:', error);
+    }
+}
+
+updateDependencies();
+```
+
+#### 15.2 Backup Script
+```javascript
+// scripts/backup.js
+const { exec } = require('child_process');
+const path = require('path');
+const fs = require('fs').promises;
+
+async function createBackup() {
+    const date = new Date().toISOString().split('T')[0];
+    const backupDir = path.join(__dirname, '../backups', date);
+
+    try {
+        // Create backup directory
+        await fs.mkdir(backupDir, { recursive: true });
+
+        // Backup content
+        await fs.cp(
+            path.join(__dirname, '../src/posts'),
+            path.join(backupDir, 'posts'),
+            { recursive: true }
+        );
+
+        // Backup assets
+        await fs.cp(
+            path.join(__dirname, '../src/assets'),
+            path.join(backupDir, 'assets'),
+            { recursive: true }
+        );
+
+        // Create database backup if applicable
+        if (process.env.DATABASE_URL) {
+            await new Promise((resolve, reject) => {
+                exec(
+                    `pg_dump ${process.env.DATABASE_URL} > ${path.join(backupDir, 'database.sql')}`,
+                    (error) => {
+                        if (error) reject(error);
+                        resolve();
+                    }
+                );
+            });
+        }
+
+        console.log(`Backup created at ${backupDir}`);
+    } catch (error) {
+        console.error('Backup failed:', error);
+    }
+}
+
+createBackup();
+```
+
+### Conclusion:
+
+This comprehensive guide has walked you through the complete process of building an accessible, performant blog using 11ty. From setting up the development environment to implementing advanced features like search functionality and analytics, we've covered crucial aspects of modern web development while maintaining a strong focus on accessibility. The journey included essential practices in SEO optimization, testing strategies, continuous integration, and long-term maintenance procedures. By following these guidelines and implementing the provided code examples, you've gained the knowledge to create a robust, inclusive blogging platform that serves all users effectively. Remember that web accessibility is not a one-time implementation but an ongoing commitment to ensuring your content remains available to everyone, regardless of their abilities. As you continue to develop and maintain your blog, keep accessibility at the forefront of your development decisions, regularly test with diverse user groups, and stay updated with evolving web standards and best practices.
